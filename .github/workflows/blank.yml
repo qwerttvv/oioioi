@@ -23,6 +23,15 @@ jobs:
           cat /proc/meminfo
           sudo timedatectl set-timezone Asia/Shanghai
 
+      - name: Install LLVM/Clang 21
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget lsb-release gnupg
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21 all
+          echo "PATH=/usr/lib/llvm-21/bin:$PATH" >> $GITHUB_ENV
+
       - name: Install dependencies
         env:
           DEBIAN_FRONTEND: noninteractive
@@ -38,12 +47,10 @@ jobs:
             libdw-dev debhelper debhelper-compat dpkg-dev devscripts \
             linux-libc-dev linux-firmware \
             dwarves pahole fakeroot git curl python3 pkg-config perl \
-            rsync xz-utils zstd binutils cpio initramfs-tools \
-            clang-21 lld-21 llvm-21
+            rsync xz-utils zstd binutils cpio initramfs-tools
           sudo -E systemctl daemon-reload || true
           sudo apt-get autoremove -y --purge
           sudo apt-get clean
-          export PATH="/usr/lib/llvm-21/bin:$PATH"
 
       - name: Clone XanMod kernel
         run: |
