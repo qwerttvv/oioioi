@@ -39,10 +39,11 @@ jobs:
             linux-libc-dev linux-firmware \
             dwarves pahole fakeroot git curl python3 pkg-config perl \
             rsync xz-utils zstd binutils cpio initramfs-tools \
-            clang lld llvm
+            clang-21 lld-21 llvm-21
           sudo -E systemctl daemon-reload || true
           sudo apt-get autoremove -y --purge
           sudo apt-get clean
+          export PATH="/usr/lib/llvm-21/bin:$PATH"
 
       - name: Clone XanMod kernel
         run: |
