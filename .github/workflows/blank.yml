@@ -30,7 +30,7 @@ jobs:
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh 19 all
-          echo "PATH=/usr/lib/llvm-21/bin:$PATH" >> $GITHUB_ENV
+          echo "PATH=/usr/lib/llvm-19/bin:$PATH" >> $GITHUB_ENV
 
       - name: Install dependencies
         env:
