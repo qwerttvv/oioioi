@@ -1,0 +1,688 @@
+name: Build XanMod Cloud Kernel
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      DEB_BUILD_OPTIONS: nocheck
+      KERNEL_LOCALVERSION: -cloud
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Show system & set-timezone
+        run: |
+          echo -e "Total CPU cores\t: $(nproc)"
+          cat /proc/cpuinfo
+          cat /proc/meminfo
+          sudo timedatectl set-timezone Asia/Shanghai
+
+      - name: Install dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo -E apt-mark hold grub-efi-amd64-signed firefox snapd mysql* || true
+          sudo apt-get autoremove -y --purge
+          sudo apt-get clean
+          sudo -E apt-get -y update
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential bc bison flex \
+            libssl-dev libelf-dev libncurses-dev libncurses5-dev \
+            libdw-dev debhelper debhelper-compat dpkg-dev devscripts \
+            linux-libc-dev linux-firmware \
+            dwarves pahole fakeroot git curl python3 pkg-config perl \
+            rsync xz-utils zstd binutils cpio initramfs-tools \
+            clang lld llvm
+          sudo -E systemctl daemon-reload || true
+          sudo apt-get autoremove -y --purge
+          sudo apt-get clean
+
+      - name: Clone XanMod kernel
+        run: |
+          git clone --depth=1 https://gitlab.com/xanmod/linux.git kernel
+
+      - name: Apply cloud config for KVM VPS
+        run:  |
+          cd kernel
+          cp CONFIGS/x86_64/config .config
+
+
+          # ==========================================
+          # 1. 基础系统配置（必需）
+          # ==========================================
+          scripts/config --enable CONFIG_GENERIC_CPU
+          scripts/config --set-val CONFIG_X86_64_VERSION 3
+          scripts/config --enable CONFIG_KERNEL_ZSTD
+          scripts/config --enable CONFIG_LTO
+          scripts/config --enable CONFIG_LTO_CLANG
+          scripts/config --enable CONFIG_LTO_CLANG_FULL
+          scripts/config --disable CONFIG_LTO_CLANG_THIN
+          scripts/config --disable CONFIG_LTO_NONE
+          scripts/config --enable CONFIG_HZ_100
+          scripts/config --set-val CONFIG_HZ 100
+          scripts/config --enable CONFIG_NO_HZ_IDLE
+          scripts/config --disable CONFIG_NO_HZ_FULL
+          scripts/config --disable CONFIG_HZ_250
+          scripts/config --enable CONFIG_FUTEX
+          scripts/config --enable CONFIG_FUTEX_PI
+          scripts/config --enable CONFIG_EPOLL
+          scripts/config --enable CONFIG_SIGNALFD
+          scripts/config --enable CONFIG_TIMERFD
+          scripts/config --enable CONFIG_EVENTFD
+          scripts/config --enable CONFIG_AIO
+          scripts/config --enable CONFIG_IO_URING
+          
+          # ==========================================
+          # 2. 虚拟化支持（KVM VPS必需）
+          # ==========================================
+          scripts/config --enable CONFIG_HYPERVISOR_GUEST
+          scripts/config --enable CONFIG_PARAVIRT
+          scripts/config --enable CONFIG_PARAVIRT_SPINLOCKS
+          scripts/config --enable CONFIG_KVM_GUEST
+          scripts/config --enable CONFIG_PVH
+          scripts/config --enable CONFIG_VIRTIO
+          scripts/config --enable CONFIG_VIRTIO_PCI
+          scripts/config --enable CONFIG_VIRTIO_PCI_LEGACY
+          scripts/config --enable CONFIG_VIRTIO_NET
+          scripts/config --enable CONFIG_VIRTIO_BLK
+          scripts/config --enable CONFIG_VIRTIO_BALLOON
+          scripts/config --enable CONFIG_VIRTIO_MMIO
+          scripts/config --enable CONFIG_VIRTIO_CONSOLE
+          scripts/config --enable CONFIG_VIRTIO_INPUT
+          scripts/config --enable CONFIG_VIRTIO_VSOCKETS
+          scripts/config --enable CONFIG_VIRTIO_MEM
+          scripts/config --enable CONFIG_VFIO
+          scripts/config --enable CONFIG_SCSI_VIRTIO
+          scripts/config --enable CONFIG_VIRTIO_FS
+          scripts/config --enable CONFIG_HW_RANDOM
+          scripts/config --enable CONFIG_HW_RANDOM_VIRTIO
+          scripts/config --disable CONFIG_XEN
+          scripts/config --disable CONFIG_HYPERV
+          scripts/config --disable CONFIG_JAILHOUSE_GUEST
+          scripts/config --disable CONFIG_ACRN_GUEST
+          scripts/config --disable CONFIG_BHYVE_GUEST
+          scripts/config --disable CONFIG_INTEL_TDX_GUEST
+          scripts/config --disable CONFIG_INTEL_TDX_HOST
+          scripts/config --disable CONFIG_KVM_HYPERV
+          scripts/config --disable CONFIG_KVM_XEN
+          scripts/config --disable CONFIG_KVM_INTEL
+          scripts/config --disable CONFIG_KVM_AMD
+          scripts/config --disable CONFIG_VBOXGUEST
+          
+          # ==========================================
+          # 3. 模块支持和调度器配置
+          # ==========================================
+          scripts/config --enable CONFIG_MODULES
+          scripts/config --enable CONFIG_MODULE_UNLOAD
+          scripts/config --disable CONFIG_MODULE_SIG
+          scripts/config --enable CONFIG_MODULE_COMPRESS
+          scripts/config --enable CONFIG_MODULE_COMPRESS_ZSTD
+          scripts/config --enable CONFIG_PREEMPT_NONE
+          scripts/config --disable CONFIG_PREEMPT
+          scripts/config --disable CONFIG_PREEMPT_VOLUNTARY
+          scripts/config --disable CONFIG_PREEMPT_DYNAMIC
+          scripts/config --disable CONFIG_PREEMPT_LAZY
+          scripts/config --disable CONFIG_SCHED_CORE
+          scripts/config --disable CONFIG_SCHED_CLASS_EXT
+          scripts/config --disable CONFIG_SCHED_AUTOGROUP
+          
+          # ==========================================
+          # 4. 内存管理和Cgroups
+          # ==========================================
+          scripts/config --enable CONFIG_TRANSPARENT_HUGEPAGE
+          scripts/config --enable CONFIG_TRANSPARENT_HUGEPAGE_MADVISE
+          scripts/config --disable CONFIG_LRU_GEN
+          scripts/config --disable CONFIG_LRU_GEN_ENABLED
+          scripts/config --disable CONFIG_TRANSPARENT_HUGEPAGE_ALWAYS
+          scripts/config --enable CONFIG_KSM
+          scripts/config --disable CONFIG_IDLE_PAGE_TRACKING
+          scripts/config --disable CONFIG_DAMON
+          scripts/config --disable CONFIG_PAGE_IDLE_FLAG
+          scripts/config --disable CONFIG_NUMA
+          scripts/config --enable CONFIG_CGROUPS
+          scripts/config --enable CONFIG_CGROUP_SCHED
+          scripts/config --enable CONFIG_CGROUP_PIDS
+          scripts/config --enable CONFIG_CGROUP_FREEZER
+          scripts/config --enable CONFIG_MEMCG
+          scripts/config --enable CONFIG_CGROUP_WRITEBACK
+          scripts/config --enable CONFIG_CGROUP_NET_CLASSID
+          scripts/config --enable CONFIG_CGROUP_NET_PRIO
+          scripts/config --enable CONFIG_CGROUP_BPF
+          scripts/config --enable CONFIG_CPUSETS
+          scripts/config --enable CONFIG_CGROUP_CPUACCT
+          
+          # ==========================================
+          # 5. 网络配置和优化
+          # ==========================================
+          scripts/config --enable CONFIG_NET
+          scripts/config --enable CONFIG_INET
+          scripts/config --enable CONFIG_IPV6
+          scripts/config --enable CONFIG_TCP_CONG_ADVANCED
+          scripts/config --enable CONFIG_TCP_CONG_BBR
+          scripts/config --enable CONFIG_DEFAULT_BBR
+          scripts/config --set-str CONFIG_DEFAULT_TCP_CONG "bbr"
+          scripts/config --enable CONFIG_NET_SCHED
+          scripts/config --enable CONFIG_NET_SCH_FQ
+          scripts/config --enable CONFIG_NET_SCH_DEFAULT
+          scripts/config --enable CONFIG_DEFAULT_FQ
+          scripts/config --set-str CONFIG_DEFAULT_NET_SCH "fq"
+          scripts/config --enable CONFIG_NET_RX_BUSY_POLL
+          scripts/config --enable CONFIG_INET_DIAG
+          scripts/config --enable CONFIG_INET_TCP_DIAG
+          scripts/config --enable CONFIG_NETFILTER
+          scripts/config --enable CONFIG_NF_NAT
+          scripts/config --enable CONFIG_NF_TABLES
+          scripts/config --enable CONFIG_IP_NF_IPTABLES
+          scripts/config --enable CONFIG_IP_NF_NAT
+          scripts/config --enable CONFIG_IP_NF_FILTER
+          scripts/config --enable CONFIG_IP6_NF_IPTABLES
+          scripts/config --enable CONFIG_IP6_NF_NAT
+          scripts/config --enable CONFIG_IP6_NF_FILTER
+          scripts/config --enable CONFIG_BRIDGE
+          scripts/config --enable CONFIG_VLAN_8021Q
+          scripts/config --enable CONFIG_TUN
+          scripts/config --enable CONFIG_VETH
+          scripts/config --disable CONFIG_SMC
+          scripts/config --disable CONFIG_TIPC
+          scripts/config --disable CONFIG_ATM
+          scripts/config --disable CONFIG_LLC2
+          scripts/config --disable CONFIG_ATALK
+          scripts/config --disable CONFIG_PHONET
+          scripts/config --disable CONFIG_6LOWPAN
+          scripts/config --disable CONFIG_IEEE802154
+          scripts/config --disable CONFIG_HSR
+          scripts/config --disable CONFIG_BATMAN_ADV
+          scripts/config --disable CONFIG_HAMRADIO
+          scripts/config --disable CONFIG_CAN
+          scripts/config --disable CONFIG_AF_RXRUC
+          scripts/config --disable CONFIG_NFC
+          scripts/config --disable CONFIG_SCTP
+          scripts/config --disable CONFIG_DCCP
+          scripts/config --disable CONFIG_LAPB
+          scripts/config --disable CONFIG_X25
+          scripts/config --disable CONFIG_ROSE
+          scripts/config --disable CONFIG_NETROM
+          scripts/config --disable CONFIG_ARCNET
+          scripts/config --disable CONFIG_WLAN
+          scripts/config --disable CONFIG_WIRELESS
+          scripts/config --disable CONFIG_CFG80211
+          scripts/config --disable CONFIG_MAC80211
+          scripts/config --disable CONFIG_BT
+          scripts/config --disable CONFIG_INFINIBAND
+          scripts/config --disable CONFIG_ISDN
+          scripts/config --disable CONFIG_IP_VS
+          scripts/config --disable CONFIG_OPENVSWITCH
+          scripts/config --disable CONFIG_MPLS
+          scripts/config --disable CONFIG_GENEVE
+          scripts/config --disable CONFIG_GTP
+          scripts/config --disable CONFIG_BAREUDP
+          scripts/config --disable CONFIG_AMT
+          scripts/config --disable CONFIG_MACSEC
+          scripts/config --disable CONFIG_WIREGUARD
+          scripts/config --disable CONFIG_OVPN
+          scripts/config --disable CONFIG_NET_VENDOR_INTEL
+          scripts/config --disable CONFIG_NET_VENDOR_AMD
+          scripts/config --disable CONFIG_NET_VENDOR_BROADCOM
+          scripts/config --disable CONFIG_NET_VENDOR_MARVELL
+          scripts/config --disable CONFIG_NET_VENDOR_MELLANOX
+          scripts/config --disable CONFIG_NET_VENDOR_REALTEK
+          scripts/config --disable CONFIG_NET_VENDOR_QLOGIC
+          scripts/config --disable CONFIG_NET_VENDOR_NVIDIA
+          scripts/config --disable CONFIG_NET_VENDOR_CHELSIO
+          scripts/config --disable CONFIG_NET_VENDOR_SOLARFLARE
+          scripts/config --disable CONFIG_NET_VENDOR_ATHEROS
+          scripts/config --disable CONFIG_NET_VENDOR_CISCO
+          scripts/config --disable CONFIG_NET_VENDOR_MICROSOFT
+          scripts/config --disable CONFIG_NET_VENDOR_MICROCHIP
+          scripts/config --disable CONFIG_NET_VENDOR_HUAWEI
+          scripts/config --disable CONFIG_NET_VENDOR_GOOGLE
+          scripts/config --disable CONFIG_NET_VENDOR_WANGXUN
+          scripts/config --disable CONFIG_NET_IPGRE_DEMUX
+          scripts/config --disable CONFIG_NET_IP_TUNNEL
+          scripts/config --disable CONFIG_IP_MROUTE
+          scripts/config --disable CONFIG_IP_MROUTE_MULTIPLE_TABLES
+          scripts/config --disable CONFIG_IP_PIMSM_V1
+          scripts/config --disable CONFIG_IP_PIMSM_V2
+          scripts/config --disable CONFIG_NET_IPVTI
+          scripts/config --disable CONFIG_NET_FOU
+          scripts/config --disable CONFIG_NET_FOU_IP_TUNNELS
+          
+          # ==========================================
+          # 6. 存储设备和文件系统
+          # ==========================================
+          scripts/config --enable CONFIG_BLK_DEV
+          scripts/config --enable CONFIG_BLK_DEV_LOOP
+          scripts/config --enable CONFIG_BLK_DEV_SD
+          scripts/config --enable CONFIG_SCSI
+          scripts/config --enable CONFIG_SCSI_MOD
+          scripts/config --enable CONFIG_NVME_CORE
+          scripts/config --enable CONFIG_BLK_DEV_NVME
+          scripts/config --disable CONFIG_MD
+          scripts/config --disable CONFIG_BLK_DEV_MD
+          scripts/config --disable CONFIG_DM_RAID
+          scripts/config --disable CONFIG_DM_CRYPT
+          scripts/config --disable CONFIG_BLK_DEV_FD
+          scripts/config --disable CONFIG_ATA_OVER_ETH
+          scripts/config --disable CONFIG_FUSION
+          scripts/config --disable CONFIG_FIREWIRE
+          scripts/config --disable CONFIG_NVME_TARGET
+          scripts/config --disable CONFIG_TARGET_CORE
+          scripts/config --disable CONFIG_ISCSI_TARGET
+          scripts/config --enable CONFIG_EXT4_FS
+          scripts/config --enable CONFIG_XFS_FS
+          scripts/config --enable CONFIG_F2FS_FS
+          scripts/config --enable CONFIG_BTRFS_FS
+          scripts/config --enable CONFIG_VFAT_FS
+          scripts/config --enable CONFIG_TMPFS
+          scripts/config --enable CONFIG_TMPFS_POSIX_ACL
+          scripts/config --enable CONFIG_TMPFS_XATTR
+          scripts/config --enable CONFIG_OVERLAY_FS
+          scripts/config --disable CONFIG_MINIX_FS
+          scripts/config --disable CONFIG_QNX4FS_FS
+          scripts/config --disable CONFIG_QNX6FS_FS
+          scripts/config --disable CONFIG_ADFS_FS
+          scripts/config --disable CONFIG_AFFS_FS
+          scripts/config --disable CONFIG_BEFS_FS
+          scripts/config --disable CONFIG_BFS_FS
+          scripts/config --disable CONFIG_EFS_FS
+          scripts/config --disable CONFIG_OMFS_FS
+          scripts/config --disable CONFIG_ROMFS_FS
+          scripts/config --disable CONFIG_ZONEFS_FS
+          scripts/config --disable CONFIG_EROFS_FS
+          scripts/config --disable CONFIG_VBOXSF_FS
+          scripts/config --disable CONFIG_9P_FS
+          scripts/config --disable CONFIG_CEPH_FS
+          scripts/config --disable CONFIG_SMB_SERVER
+          scripts/config --disable CONFIG_AFS_FS
+          scripts/config --disable CONFIG_OCFS2_FS
+          scripts/config --disable CONFIG_GFS2_FS
+          scripts/config --disable CONFIG_JFS_FS
+          scripts/config --disable CONFIG_HFS_FS
+          scripts/config --disable CONFIG_HFSPLUS_FS
+          scripts/config --disable CONFIG_SQUASHFS
+          scripts/config --disable CONFIG_UBIFS_FS
+          scripts/config --disable CONFIG_JFFS2_FS
+          scripts/config --disable CONFIG_REISERFS_FS
+          scripts/config --disable CONFIG_HPFS_FS
+          scripts/config --disable CONFIG_UBIFS_FS_SECURITY
+          scripts/config --disable CONFIG_SYSV_FS
+          scripts/config --disable CONFIG_UFS_FS
+          scripts/config --disable CONFIG_BLK_DEV_BSG_COMMON
+          scripts/config --disable CONFIG_BLK_DEV_INTEGRITY
+          scripts/config --disable CONFIG_BLK_DEV_ZONED
+          scripts/config --disable CONFIG_BLK_SED_OPAL
+          scripts/config --disable CONFIG_BLK_INLINE_ENCRYPTION
+          scripts/config --disable CONFIG_BLK_INLINE_ENCRYPTION_FALLBACK
+          scripts/config --disable CONFIG_PARTITION_ADVANCED
+          scripts/config --disable CONFIG_AIX_PARTITION
+          scripts/config --disable CONFIG_MAC_PARTITION
+          scripts/config --disable CONFIG_MSDOS_PARTITION
+          scripts/config --disable CONFIG_BSD_DISKLABEL
+          scripts/config --disable CONFIG_MINIX_SUBPARTITION
+          scripts/config --disable CONFIG_SOLARIS_X86_PARTITION
+          scripts/config --disable CONFIG_LDM_PARTITION
+          scripts/config --disable CONFIG_KARMA_PARTITION
+          scripts/config --disable CONFIG_BLK_PM
+          scripts/config --disable CONFIG_SCSI_AACRAID
+          scripts/config --disable CONFIG_SCSI_AIC7XXX
+          scripts/config --disable CONFIG_SCSI_AIC79XX
+          scripts/config --disable CONFIG_SCSI_AIC94XX
+          scripts/config --disable CONFIG_SCSI_HPTIOP
+          scripts/config --disable CONFIG_SCSI_ARCMSR
+          scripts/config --disable CONFIG_SCSI_ESAS2R
+          scripts/config --disable CONFIG_SCSI_MVSAS
+          scripts/config --disable CONFIG_SCSI_MVUMI
+          scripts/config --disable CONFIG_SCSI_DMX3191D
+          scripts/config --disable CONFIG_SCSI_FUTURE_DOMAIN
+          scripts/config --disable CONFIG_SCSI_IPS
+          scripts/config --disable CONFIG_SCSI_INITIO
+          scripts/config --disable CONFIG_SCSI_INIA100
+          scripts/config --disable CONFIG_SCSI_MEGARAID
+          scripts/config --disable CONFIG_SCSI_MEGARAID_SAS
+          scripts/config --disable CONFIG_SCSI_MEGARAID_MAILBOX
+          scripts/config --disable CONFIG_SCSI_QLOGIC_1280
+          scripts/config --disable CONFIG_SCSI_QLOGICPTI
+          scripts/config --disable CONFIG_SCSI_DC395x
+          scripts/config --disable CONFIG_SCSI_AM53C974
+          scripts/config --disable CONFIG_SCSI_WD719X
+          scripts/config --disable CONFIG_SCSI_DEBUG
+          scripts/config --disable CONFIG_SCSI_DH
+          scripts/config --disable CONFIG_SCSI_OSD_INITIATOR
+          scripts/config --disable CONFIG_NVME_FC
+          scripts/config --disable CONFIG_NVME_AUTH
+          scripts/config --disable CONFIG_NVME_HWMON
+          
+          # ==========================================
+          # 7. 显示和控制台
+          # ==========================================
+          scripts/config --disable CONFIG_DRM
+          scripts/config --disable CONFIG_DRM_FBDEV_EMULATION
+          scripts/config --disable CONFIG_AGP
+          scripts/config --disable CONFIG_VGA_ARB
+          scripts/config --enable CONFIG_FB
+          scripts/config --enable CONFIG_FB_EFI
+          scripts/config --enable CONFIG_FB_VESA
+          scripts/config --enable CONFIG_FRAMEBUFFER_CONSOLE
+          scripts/config --enable CONFIG_VT
+          scripts/config --enable CONFIG_VT_CONSOLE
+          
+          # ==========================================
+          # 8. 安全模块配置
+          # ==========================================
+          scripts/config --enable CONFIG_SECURITY
+          scripts/config --disable CONFIG_SECURITY_SMACK
+          scripts/config --disable CONFIG_SECURITY_TOMOYO
+          scripts/config --disable CONFIG_SECURITY_LOADPIN
+          scripts/config --disable CONFIG_SECURITY_YAMA
+          scripts/config --disable CONFIG_SECURITY_SAFESETID
+          scripts/config --disable CONFIG_SECURITY_LOCKDOWN_LSM
+          scripts/config --disable CONFIG_SECURITY_LANDLOCK
+          scripts/config --disable CONFIG_SECURITY_IPE
+          scripts/config --disable CONFIG_SECURITY_SELINUX
+          scripts/config --disable CONFIG_SECURITY_APPARMOR
+          scripts/config --disable CONFIG_IMA
+          scripts/config --disable CONFIG_EVM
+          scripts/config --disable CONFIG_INTEGRITY
+          
+          # ==========================================
+          # 9. 硬件驱动精简
+          # ==========================================
+          scripts/config --disable CONFIG_USB_SUPPORT
+          scripts/config --disable CONFIG_USB
+          scripts/config --disable CONFIG_USB_GADGET
+          scripts/config --disable CONFIG_PARPORT
+          scripts/config --disable CONFIG_PCCARD
+          scripts/config --disable CONFIG_PCMCIA
+          scripts/config --disable CONFIG_W1
+          scripts/config --disable CONFIG_GAMEPORT
+          scripts/config --disable CONFIG_MEMSTICK
+          scripts/config --disable CONFIG_ACCESSIBILITY
+          scripts/config --disable CONFIG_RC_CORE
+          scripts/config --disable CONFIG_GPIO_SYSFS
+          scripts/config --disable CONFIG_THERMAL
+          scripts/config --disable CONFIG_SOUND
+          scripts/config --disable CONFIG_SND
+          scripts/config --disable CONFIG_MEDIA_SUPPORT
+          scripts/config --disable CONFIG_CDROM
+          scripts/config --disable CONFIG_PCSPKR_PLATFORM
+          scripts/config --disable CONFIG_I2C
+          scripts/config --disable CONFIG_SPI
+          scripts/config --disable CONFIG_PPS
+          scripts/config --disable CONFIG_WATCHDOG
+          scripts/config --disable CONFIG_INPUT_MOUSE
+          scripts/config --disable CONFIG_INPUT_JOYSTICK
+          scripts/config --disable CONFIG_INPUT_TABLET
+          scripts/config --disable CONFIG_INPUT_TOUCHSCREEN
+          scripts/config --disable CONFIG_SERIO
+          scripts/config --enable CONFIG_INPUT_KEYBOARD
+          scripts/config --enable CONFIG_KEYBOARD_ATKBD
+          scripts/config --disable CONFIG_INPUT_MOUSEDEV
+          scripts/config --disable CONFIG_INPUT_JOYDEV
+          scripts/config --disable CONFIG_INPUT_MISC
+          scripts/config --disable CONFIG_SERIO_SERPORT
+          scripts/config --disable CONFIG_SERIO_LIBPS2
+          scripts/config --disable CONFIG_ACPI_DOCK
+          scripts/config --disable CONFIG_ACPI_BGRT
+          scripts/config --disable CONFIG_ACPI_FPDT
+          scripts/config --disable CONFIG_ACPI_FAN
+          scripts/config --disable CONFIG_ACPI_TAD
+          scripts/config --disable CONFIG_ACPI_SBS
+          scripts/config --disable CONFIG_ACPI_PLATFORM_PROFILE
+          scripts/config --disable CONFIG_ACPI_TABLE_UPGRADE
+          scripts/config --disable CONFIG_ACPI_DEBUGGER
+          scripts/config --disable CONFIG_ACPI_SPCR_TABLE
+          scripts/config --disable CONFIG_ACPI_LPIT
+          scripts/config --disable CONFIG_ACPI_EC_DEBUGFS
+          scripts/config --disable CONFIG_ACPI_IPMI
+          scripts/config --disable CONFIG_ACPI_EXTLOG
+          scripts/config --disable CONFIG_ACPI_ADXL
+          scripts/config --disable CONFIG_ACPI_CONFIGFS
+          scripts/config --disable CONFIG_ACPI_PFRUT
+          scripts/config --disable CONFIG_ACPI_PCC
+          scripts/config --disable CONFIG_ACPI_FFH
+          scripts/config --disable CONFIG_ACPI_MRRM
+          scripts/config --disable CONFIG_CPU_FREQ
+          scripts/config --disable CONFIG_CPU_FREQ_GOV_PERFORMANCE
+          scripts/config --disable CONFIG_CPU_FREQ_GOV_POWERSAVE
+          scripts/config --disable CONFIG_CPU_FREQ_GOV_USERSPACE
+          scripts/config --disable CONFIG_CPU_FREQ_GOV_ONDEMAND
+          scripts/config --disable CONFIG_CPU_FREQ_GOV_CONSERVATIVE
+          scripts/config --disable CONFIG_CPU_FREQ_GOV_SCHEDUTIL
+          scripts/config --disable CONFIG_X86_INTEL_PSTATE
+          scripts/config --disable CONFIG_X86_AMD_PSTATE
+          scripts/config --disable CONFIG_X86_ACPI_CPUFREQ
+          scripts/config --disable CONFIG_INTEL_IDLE
+          scripts/config --disable CONFIG_AMD_PMF
+          scripts/config --disable CONFIG_AMD_PMC
+          scripts/config --disable CONFIG_HIBERNATION
+          scripts/config --disable CONFIG_DPTF_POWER
+          scripts/config --disable CONFIG_DPTF_PCH_FIVR
+          scripts/config --disable CONFIG_XPOWER_PMIC_OPREGION
+          scripts/config --disable CONFIG_BYTCRC_PMIC_OPREGION
+          scripts/config --disable CONFIG_CHTCRC_PMIC_OPREGION
+          scripts/config --disable CONFIG_BXT_WC_PMIC_OPREGION
+          scripts/config --disable CONFIG_CHT_WC_PMIC_OPREGION
+          scripts/config --disable CONFIG_CHT_DC_TI_PMIC_OPREGION
+          scripts/config --disable CONFIG_TPS68470_PMIC_OPREGION
+          scripts/config --disable CONFIG_PCIEAER
+          scripts/config --disable CONFIG_PCIE_PME
+          scripts/config --disable CONFIG_PCIE_DPC
+          scripts/config --disable CONFIG_PCIE_PTM
+          scripts/config --disable CONFIG_PCIE_EDR
+          scripts/config --disable CONFIG_PCI_STUB
+          scripts/config --disable CONFIG_PCI_PF_STUB
+          scripts/config --disable CONFIG_PCI_ATS
+          scripts/config --disable CONFIG_PCI_DOE
+          scripts/config --disable CONFIG_PCI_PRI
+          scripts/config --disable CONFIG_PCI_PASID
+          scripts/config --disable CONFIG_PCIE_TPH
+          scripts/config --disable CONFIG_PCI_P2PDMA
+          scripts/config --disable CONFIG_PCI_LABEL
+          scripts/config --disable CONFIG_HOTPLUG_PCI
+          scripts/config --disable CONFIG_HOTPLUG_PCI_ACPI
+          scripts/config --disable CONFIG_HOTPLUG_PCI_CPCI
+          scripts/config --disable CONFIG_HOTPLUG_PCI_SHPC
+          scripts/config --disable CONFIG_IOMMUFD
+          scripts/config --disable CONFIG_INTEL_IOMMU
+          scripts/config --disable CONFIG_AMD_IOMMU
+          scripts/config --disable CONFIG_VIRTIO_IOMMU
+          scripts/config --disable CONFIG_AMD_SECURE_AVIC
+          scripts/config --disable CONFIG_X86_POSTED_MSI
+          scripts/config --disable CONFIG_X86_MPPARSE
+          scripts/config --disable CONFIG_X86_CPU_RESCTRL
+          scripts/config --disable CONFIG_X86_FRED
+          scripts/config --disable CONFIG_X86_INTEL_LPSS
+          scripts/config --disable CONFIG_X86_AMD_PLATFORM_DEVICE
+          scripts/config --disable CONFIG_IOSF_MBI
+          scripts/config --disable CONFIG_X86_UMIP
+          scripts/config --disable CONFIG_X86_INTEL_MEMORY_PROTECTION_KEYS
+          scripts/config --disable CONFIG_X86_SGX
+          scripts/config --disable CONFIG_X86_USER_SHADOW_STACK
+          scripts/config --disable CONFIG_X86_CET
+          scripts/config --disable CONFIG_X86_KERNEL_IBT
+          scripts/config --disable CONFIG_ATA_SFF
+          scripts/config --disable CONFIG_FDDI
+          scripts/config --disable CONFIG_HIPPI
+          scripts/config --disable CONFIG_NET_FC
+          scripts/config --disable CONFIG_X86_SYSFB
+          scripts/config --disable CONFIG_FIRMWARE_MEMMAP
+          scripts/config --disable CONFIG_EISA
+          scripts/config --disable CONFIG_SENSORS_LIS3LV02D
+          scripts/config --disable CONFIG_AD525X_DPOT
+          scripts/config --disable CONFIG_DUMMY_IRQ
+          scripts/config --disable CONFIG_IBM_ASM
+          scripts/config --disable CONFIG_PHANTOM
+          scripts/config --disable CONFIG_RPMB
+          scripts/config --disable CONFIG_TIFM_CORE
+          scripts/config --disable CONFIG_ICS932S401
+          scripts/config --disable CONFIG_ENCLOSURE_SERVICES
+          scripts/config --disable CONFIG_HP_ILO
+          scripts/config --disable CONFIG_APDS9802ALS
+          scripts/config --disable CONFIG_ISL29003
+          scripts/config --disable CONFIG_SENSORS_TSL2550
+          scripts/config --disable CONFIG_SENSORS_BH1770
+          scripts/config --disable CONFIG_SENSORS_APDS990X
+          scripts/config --disable CONFIG_HMC6352
+          scripts/config --disable CONFIG_DS1682
+          scripts/config --disable CONFIG_VMWARE_BALLOON
+          scripts/config --disable CONFIG_LATTICE_ECP3_CONFIG
+          scripts/config --disable CONFIG_DW_XDATA_PCIE
+          scripts/config --disable CONFIG_PCI_ENDPOINT_TEST
+          scripts/config --disable CONFIG_XILINX_SDFEC
+          scripts/config --disable CONFIG_MISC_RTSX
+          scripts/config --disable CONFIG_NTSYNC
+          scripts/config --disable CONFIG_NSM
+          scripts/config --disable CONFIG_C2PORT
+          scripts/config --disable CONFIG_EEPROM_AT24
+          scripts/config --disable CONFIG_EEPROM_MAX6875
+          scripts/config --disable CONFIG_EEPROM_93CX6
+          scripts/config --disable CONFIG_EEPROM_IDT_89HPESX
+          scripts/config --disable CONFIG_EEPROM_EE1004
+          scripts/config --disable CONFIG_EEPROM_M24LR
+          scripts/config --disable CONFIG_CB710_CORE
+          scripts/config --disable CONFIG_SENSORS_LIS3_I2C
+          scripts/config --disable CONFIG_ALTERA_STAPL
+          scripts/config --disable CONFIG_INTEL_MEI
+          scripts/config --disable CONFIG_VMWARE_VMCI
+          scripts/config --disable CONFIG_GENWQE
+          scripts/config --disable CONFIG_BCM_VK
+          scripts/config --disable CONFIG_MISC_ALCOR_PCI
+          scripts/config --disable CONFIG_MISC_RTSX_PCI
+          scripts/config --disable CONFIG_UACCE
+          scripts/config --disable CONFIG_PVPANIC_MMIO
+          scripts/config --disable CONFIG_PVPANIC_PCI
+          
+          # ==========================================
+          # 10. 调试和开发工具精简
+          # ==========================================
+          scripts/config --disable CONFIG_DEBUG_INFO
+          scripts/config --disable CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
+          scripts/config --disable CONFIG_DEBUG_INFO_DWARF4
+          scripts/config --disable CONFIG_DEBUG_INFO_DWARF5
+          scripts/config --disable CONFIG_GDB_SCRIPTS
+          scripts/config --disable CONFIG_FRAME_POINTER
+          scripts/config --enable CONFIG_KALLSYMS
+          scripts/config --disable CONFIG_KALLSYMS_ALL
+          scripts/config --disable CONFIG_KALLSYMS_SELFTEST
+          scripts/config --disable CONFIG_KFENCE
+          scripts/config --disable CONFIG_PAGE_POISONING
+          scripts/config --disable CONFIG_DEBUG_WX
+          scripts/config --disable CONFIG_FUNCTION_TRACER
+          scripts/config --disable CONFIG_STACK_TRACER
+          scripts/config --disable CONFIG_FTRACE
+          scripts/config --disable CONFIG_LATENCYTOP
+          scripts/config --disable CONFIG_SCHED_DEBUG
+          scripts/config --disable CONFIG_SCHEDSTATS
+          scripts/config --disable CONFIG_DYNAMIC_DEBUG
+          scripts/config --disable CONFIG_PRINTK_TIME
+          scripts/config --disable CONFIG_KPROBES
+          scripts/config --disable CONFIG_UPROBES
+          scripts/config --disable CONFIG_TRACEPOINTS
+          scripts/config --disable CONFIG_PROFILING
+          scripts/config --disable CONFIG_LIVEPATCH
+          scripts/config --disable CONFIG_PM_DEBUG
+          scripts/config --disable CONFIG_ACPI_DEBUG
+          scripts/config --disable CONFIG_PRINTK_INDEX
+          scripts/config --disable CONFIG_CHECKPOINT_RESTORE
+          scripts/config --disable CONFIG_WATCH_QUEUE
+          scripts/config --disable CONFIG_IKHEADERS
+          scripts/config --disable CONFIG_DEBUG_KERNEL
+          scripts/config --disable CONFIG_DEBUG_MISC
+          scripts/config --disable CONFIG_DEBUG_FS
+          scripts/config --disable CONFIG_MODULE_DEBUGFS
+          scripts/config --disable CONFIG_PERF_EVENTS_INTEL_UNCORE
+          scripts/config --disable CONFIG_PERF_EVENTS_INTEL_RAPL
+          scripts/config --disable CONFIG_PERF_EVENTS_INTEL_CSTATE
+          scripts/config --disable CONFIG_PERF_EVENTS_AMD_POWER
+          scripts/config --disable CONFIG_PERF_EVENTS_AMD_UNCORE
+          scripts/config --disable CONFIG_PERF_EVENTS_AMD_BRS
+          scripts/config --disable CONFIG_X86_MCE
+          scripts/config --disable CONFIG_X86_MCE_INTEL
+          scripts/config --disable CONFIG_X86_MCE_AMD
+          scripts/config --disable CONFIG_X86_MCE_THRESHOLD
+          scripts/config --disable CONFIG_X86_MCE_INJECT
+          scripts/config --disable CONFIG_HW_RANDOM_TIMERIOMEM
+          scripts/config --disable CONFIG_HW_RANDOM_INTEL
+          scripts/config --disable CONFIG_HW_RANDOM_AMD
+          scripts/config --disable CONFIG_HW_RANDOM_BA431
+          scripts/config --disable CONFIG_HW_RANDOM_VIA
+          scripts/config --disable CONFIG_HW_RANDOM_XIPHERA
+          
+          # ==========================================
+          # 11. BPF和安全审计
+          # ==========================================
+          scripts/config --enable CONFIG_BPF
+          scripts/config --enable CONFIG_BPF_SYSCALL
+          scripts/config --enable CONFIG_BPF_JIT
+          scripts/config --enable CONFIG_BPF_JIT_ALWAYS_ON
+          scripts/config --disable CONFIG_BPF_LSM
+          scripts/config --disable CONFIG_BPF_PRELOAD
+          scripts/config --disable CONFIG_AUDIT
+          scripts/config --disable CONFIG_AUDITSYSCALL
+          scripts/config --disable CONFIG_HAVE_ARCH_AUDITSYSCALL
+          scripts/config --disable CONFIG_AUDIT_WATCH
+          scripts/config --disable CONFIG_AUDIT_TREE
+          scripts/config --disable CONFIG_POSIX_MQUEUE_SYSCTL
+          scripts/config --disable CONFIG_SGETMASK_SYSCALL
+          
+          # ==========================================
+          # 12. 其他优化和杂项
+          # ==========================================
+          scripts/config --disable CONFIG_STAGING
+          scripts/config --disable CONFIG_IIO
+          scripts/config --disable CONFIG_NTB
+          scripts/config --disable CONFIG_FPGA
+          scripts/config --disable CONFIG_GNSS
+          scripts/config --disable CONFIG_GREYBUS
+          scripts/config --disable CONFIG_COMEDI
+          scripts/config --disable CONFIG_ANDROID
+          scripts/config --disable CONFIG_LIBNVDIMM
+          scripts/config --disable CONFIG_DAX
+          scripts/config --disable CONFIG_HID_SENSOR_HUB
+          scripts/config --disable CONFIG_AUXDISPLAY
+
+
+          make LLVM=1 LLVM_IAS=1 CC=clang LD=ld.lld olddefconfig
+
+      - name: Build kernel vmlinux
+        run: |
+          cd kernel
+          make -j$(nproc) LLVM=1 LLVM_IAS=1 CC=clang LD=ld.lld vmlinux KCFLAGS="-march=x86-64-v3 -O3 -Wno-error"
+
+      - name: Build kernel modules_prepare
+        run: |
+          cd kernel
+          make -j$(nproc) LLVM=1 LLVM_IAS=1 CC=clang LD=ld.lld modules_prepare KCFLAGS="-march=x86-64-v3 -O3 -Wno-error"
+
+      - name: Build kernel deb packages
+        run: |
+          cd kernel
+          KDEB_COMPRESS=xz make -j$(nproc) LLVM=1 LLVM_IAS=1 CC=clang LD=ld.lld bindeb-pkg LOCALVERSION=${KERNEL_LOCALVERSION} KCFLAGS="-march=x86-64-v3 -O3 -Wno-error"
+
+      - name: Collect kernel artifacts
+        run: |
+          mkdir -p artifacts
+          mv linux-image-*.deb artifacts/
+          mv linux-headers-*.deb artifacts/
+
+      - name: Build lotspeed
+        run: |
+          git clone https://github.com/uk0/lotspeed.git
+          cd lotspeed
+          git checkout e49afea6e942695898628f930fe7aba0feedb178
+          make -C ../kernel M=$PWD modules -j$(nproc) LLVM=1 LLVM_IAS=1 CC=clang LD=ld.lld KCFLAGS="-march=x86-64-v3 -O3 -Wno-error"
+          cp *.ko ../artifacts/
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: xanmod-cloud-${{ github.run_id }}
+          name: XanMod Cloud Kernel
+          files: artifacts/*
