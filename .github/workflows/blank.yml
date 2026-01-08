@@ -2763,7 +2763,7 @@ jobs:
         run: |
           git clone https://github.com/uk0/lotspeed.git
           cd lotspeed
-          git checkout e49afea6e942695898628f930fe7aba0feedb178
+          # git checkout e49afea6e942695898628f930fe7aba0feedb178
 
           sed -i 's/static unsigned long lotserver_rate = 125000000;/static unsigned long lotserver_rate = 250000000;/' lotspeed.c
           sed -i 's/static unsigned int lotserver_max_cwnd = 15000;/static unsigned int lotserver_max_cwnd = 20000;/' lotspeed.c
