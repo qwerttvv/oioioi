@@ -2771,6 +2771,7 @@ jobs:
           sed -i 's/static unsigned int lotserver_fast_alpha = 20;/static unsigned int lotserver_fast_alpha = 30;/' lotspeed.c
           sed -i 's/static unsigned int lotserver_fast_gamma = 50;/static unsigned int lotserver_fast_gamma = 60;/' lotspeed.c
           sed -i 's/static unsigned int lotserver_fast_ss_exit = 25;/static unsigned int lotserver_fast_ss_exit = 30;/' lotspeed.c
+          sed -i 's/static unsigned int lotserver_hd_thresh_us = 180000;/static unsigned int lotserver_hd_thresh_us = 110000;/' lotspeed.c
           sed -i 's/static unsigned int lotserver_hd_gamma_boost = 20;/static unsigned int lotserver_hd_gamma_boost = 30;/' lotspeed.c
           sed -i 's/static unsigned int lotserver_brave_push_pct = 8;/static unsigned int lotserver_brave_push_pct = 12;/' lotspeed.c
           grep "static unsigned long lotserver_rate" lotspeed.c
@@ -2779,6 +2780,7 @@ jobs:
           grep "static unsigned int lotserver_fast_alpha" lotspeed.c
           grep "static unsigned int lotserver_fast_gamma" lotspeed.c
           grep "static unsigned int lotserver_fast_ss_exit" lotspeed.c
+          grep "static unsigned int lotserver_hd_thresh_us" lotspeed.c
           grep "static unsigned int lotserver_hd_gamma_boost" lotspeed.c
           grep "static unsigned int lotserver_brave_push_pct" lotspeed.c
           
