@@ -2767,7 +2767,7 @@ jobs:
           # git checkout merge_bl
           git checkout ml-tcp
 
-          sed -i 's/static unsigned long lotserver_rate = 125000000;/static unsigned long lotserver_rate = 250000000;/' lotspeed.c
+          sed -i 's/static unsigned long lotserver_rate = 125000000;/static unsigned long lotserver_rate = 62500000;/' lotspeed.c
           sed -i 's/static unsigned int lotserver_max_cwnd = 15000;/static unsigned int lotserver_max_cwnd = 20000;/' lotspeed.c
           sed -i 's/static unsigned int lotserver_beta = 616;/static unsigned int lotserver_beta = 512;/' lotspeed.c
           sed -i 's/static unsigned int lotserver_fast_alpha = 20;/static unsigned int lotserver_fast_alpha = 30;/' lotspeed.c
