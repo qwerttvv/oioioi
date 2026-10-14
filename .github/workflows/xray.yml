@@ -59,7 +59,7 @@ jobs:
         go clean -modcache
         go get -u ./...
         go get gvisor.dev/gvisor@go
-        go get github.com/XTLS/REALITY@3c98159dee388c2914a2b9e73ea57bc10023f9d3
+        go get github.com/xtls/reality@3c98159dee388c2914a2b9e73ea57bc10023f9d3
         go mod tidy
         go mod download
         CGO_ENABLED=0 GOOS="linux" GOARCH="arm64" go build -o xray -trimpath -buildvcs=false -gcflags="all=-l=4" -ldflags "-s -w -buildid=" ./main
