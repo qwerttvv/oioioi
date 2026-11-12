@@ -62,6 +62,7 @@ jobs:
           mv src/smartdns src/smartdns-x86_64
           upx --lzma --best src/smartdns-x86_64
           zip -j -9 SmartDNS-linux_x86_64.zip src/smartdns-x86_64
+          export LDFLAGS="-lssl -lcrypto -lz -lzstd -ljitterentropy"
           ./package/build-pkg.sh --platform linux --arch x86_64 --static
           mv src/smartdns src/smartdns-x86_64-static
           upx --lzma --best src/smartdns-x86_64-static
